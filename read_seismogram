@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Aug 20 19:33:00 2024
+
+@author: raf
+"""
+from obspy import read, UTCDateTime
+from obspy.clients.fdsn import Client
+import matplotlib.pyplot as plt
+import hvsrpy
+import numpy as np
+from hvsrpy import sesame
+
+plt.style.use(hvsrpy.HVSRPY_MPL_STYLE)
+
+stations = ["ALRN","EUNU","RES","POIN","ILON", "BLKN","FCC","PKLO"]
+
+#pklo außerhalb permafrost
+peaks = []
+
+plt.plot(peaks)
+plt.show()
+
+client = Client("IRIS")
+
+net = "CN"  # network of the station
+sta = "BLKN"  # station code
+loc = "*"  # to specify the instrument at the station
+chan = "*"
+
+starttime_org = UTCDateTime("2023-01-01T04:00:00")
+
+
+
+for a in range (0,365):
+    
+    starttime = starttime_org + (a*86400)
+    endtime = starttime + 1800
+    # print(starttime,endtime)
+
+    myStream = client.get_waveforms(net, sta, loc, chan, starttime, endtime)
+    tmp_path = "tmp.mseed"
+    myStream.write(tmp_path)
+    
+    preprocessing_settings = hvsrpy.settings.HvsrPreProcessingSettings()
+    preprocessing_settings.detrend = "linear"
+    preprocessing_settings.window_length_in_seconds = 120
+    preprocessing_settings.orient_to_degrees_from_north = 0.0
+    preprocessing_settings.filter_corner_frequencies_in_hz = (None, None)
+    preprocessing_settings.ignore_dissimilar_time_step_warning = False
+    
+    # print("Preprocessing Summary")
+    # print("-"*60)
+    # preprocessing_settings.psummary()
+    
+    processing_settings = hvsrpy.settings.HvsrTraditionalProcessingSettings()
+    processing_settings.window_type_and_width = ("tukey", 0.2)
+    processing_settings.smoothing=dict(operator="konno_and_ohmachi",
+                                       bandwidth=40,
+                                       center_frequencies_in_hz=np.geomspace(0.2, 50, 200))
+    processing_settings.method_to_combine_horizontals = "geometric_mean"
+    processing_settings.handle_dissimilar_time_steps_by = "frequency_domain_resampling"
+    
+    # print("Processing Summary")
+    # print("-"*60)
+    # processing_settings.psummary()
+    
+    
+    
+    srecords = hvsrpy.read(tmp_path)
+    srecords = hvsrpy.preprocess(srecords, preprocessing_settings)
+    hvsr = hvsrpy.process(srecords, processing_settings)
+    
+    peak = np.median(hvsr.peak_frequencies)
+    print(starttime, peak)
+    peaks.append(peak)
+
+# tst = hvsrpy.summarize_hvsr_statistics(hvsr)
+
+# fig, ax = hvsrpy.plot_single_panel_hvsr_curves(hvsr)
+# ax.get_legend().remove()
+# ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+# plt.show()
